@@ -17,16 +17,18 @@ const httpServer = createServer(app);
 
 // Function to validate origin
 const isValidOrigin = (origin) => {
-  if (!origin) return false;
+  if (!origin) return true; // Allow requests with no origin (like mobile apps or curl)
   return origin.endsWith('.vercel.app') || 
          origin === 'http://localhost:5173' ||
-         origin === 'https://gig-calendar-app.vercel.app';
+         origin === 'https://gig-calendar-app.vercel.app' ||
+         origin === 'https://gig-calendar-app-git-main-sonimanic.vercel.app' ||
+         origin === 'https://gig-calendar-app-sonimanic.vercel.app';
 };
 
 // Configure CORS for Express
 app.use(cors({
   origin: (origin, callback) => {
-    if (!origin || isValidOrigin(origin)) {
+    if (isValidOrigin(origin)) {
       callback(null, true);
     } else {
       console.log('Blocked origin:', origin);
@@ -42,7 +44,7 @@ app.use(cors({
 const io = new Server(httpServer, {
   cors: {
     origin: (origin, callback) => {
-      if (!origin || isValidOrigin(origin)) {
+      if (isValidOrigin(origin)) {
         callback(null, true);
       } else {
         console.log('Blocked WebSocket origin:', origin);
@@ -64,16 +66,65 @@ const io = new Server(httpServer, {
 
 app.use(express.json());
 
+// Root endpoint
+app.get('/', (req, res) => {
+  res.json({ 
+    message: 'GigCalendar API is running',
+    endpoints: {
+      auth: '/api/login',
+      members: '/api/members',
+      gigs: '/api/gigs',
+      commitments: '/api/commitments'
+    }
+  });
+});
+
 // MongoDB connection
 const MONGODB_URI = 'mongodb+srv://bvanportfleet:36GD3syZS4fGS7eO@gigcalendar.gnwe4.mongodb.net/?retryWrites=true&w=majority&appName=GigCalendar';
 
-mongoose.connect(MONGODB_URI)
-  .then(() => {
+// MongoDB connection options
+const mongooseOptions = {
+  useNewUrlParser: true,
+  useUnifiedTopology: true,
+  serverSelectionTimeoutMS: 5000,
+  socketTimeoutMS: 45000,
+};
+
+// Connect to MongoDB with retry logic
+const connectWithRetry = async () => {
+  try {
+    await mongoose.connect(MONGODB_URI, mongooseOptions);
     console.log('Connected to MongoDB Atlas');
-  })
-  .catch((error) => {
-    console.error('Error connecting to MongoDB:', error);
-  });
+  } catch (error) {
+    console.error('MongoDB connection error:', error);
+    console.log('Retrying connection in 5 seconds...');
+    setTimeout(connectWithRetry, 5000);
+  }
+};
+
+// Initial connection attempt
+connectWithRetry();
+
+// Handle MongoDB connection events
+mongoose.connection.on('error', (error) => {
+  console.error('MongoDB connection error:', error);
+});
+
+mongoose.connection.on('disconnected', () => {
+  console.log('MongoDB disconnected. Attempting to reconnect...');
+  connectWithRetry();
+});
+
+process.on('SIGINT', async () => {
+  try {
+    await mongoose.connection.close();
+    console.log('MongoDB connection closed through app termination');
+    process.exit(0);
+  } catch (error) {
+    console.error('Error while closing MongoDB connection:', error);
+    process.exit(1);
+  }
+});
 
 // Emit updates to all connected clients
 const emitUpdate = (type, data) => {
