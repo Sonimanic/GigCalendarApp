@@ -41,10 +41,19 @@ export const useAuthStore = create<AuthState>()(
         setUsers: (users) => set({ users }),
 
         fetchUsers: async () => {
+          console.log('Fetching users...');
           try {
-            const response = await fetch(`${API_URL}/members`);
-            if (!response.ok) throw new Error('Failed to fetch users');
+            const response = await fetch(`${API_URL}/members`, {
+              credentials: 'include',
+            });
+            
+            console.log('Fetch users response status:', response.status);
+            if (!response.ok) {
+              throw new Error('Failed to fetch users');
+            }
+            
             const users = await response.json();
+            console.log(`Fetched ${users.length} users`);
             set({ users });
           } catch (error) {
             console.error('Failed to fetch users:', error);
@@ -53,23 +62,32 @@ export const useAuthStore = create<AuthState>()(
         },
 
         login: async ({ email, password }) => {
+          console.log('Attempting login for:', email);
           try {
-            await get().fetchUsers(); // Ensure we have latest users
-            const user = get().users.find(
-              (u) => u.email.toLowerCase() === email.toLowerCase() && u.password === password
-            );
-            
-            if (user) {
-              const { password: _, ...userWithoutPassword } = user;
-              set({ user: userWithoutPassword, isAuthenticated: true, error: null });
-              return true;
-            } else {
-              set({ error: 'Invalid email or password' });
+            const response = await fetch(`${API_URL}/login`, {
+              method: 'POST',
+              headers: {
+                'Content-Type': 'application/json',
+              },
+              body: JSON.stringify({ email, password }),
+              credentials: 'include',
+            });
+
+            console.log('Login response status:', response.status);
+            const data = await response.json();
+
+            if (!response.ok) {
+              console.error('Login failed:', data.error);
+              set({ error: data.error || 'Login failed' });
               return false;
             }
+
+            console.log('Login successful');
+            set({ user: data.user, isAuthenticated: true, error: null });
+            return true;
           } catch (error) {
-            console.error('Login failed:', error);
-            set({ error: 'Login failed. Please try again.' });
+            console.error('Login error:', error);
+            set({ error: 'Failed to connect to server' });
             return false;
           }
         },

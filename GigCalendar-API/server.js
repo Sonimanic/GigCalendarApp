@@ -71,19 +71,17 @@ const decodeContent = (content) => JSON.parse(Buffer.from(content, 'base64').toS
 
 // Function to get file content from GitHub
 async function getFileContent(path) {
+  console.log(`Fetching file content for: ${path}`);
   try {
     const response = await octokit.rest.repos.getContent({
       owner: REPO_OWNER,
       repo: REPO_NAME,
       path: `GigCalendar-API/data/${path}`,
     });
-    const content = decodeContent(response.data.content);
-    return content.gigs || content.members || content.commitments || [];
+    console.log(`Successfully fetched ${path}`);
+    return response.data;
   } catch (error) {
-    console.error(`Error getting file content for ${path}:`, error.message);
-    if (error.status === 404) {
-      return []; // Return empty array for new files
-    }
+    console.error(`Error fetching ${path}:`, error.message);
     throw error;
   }
 }
@@ -122,33 +120,25 @@ async function updateFileContent(path, content) {
   }
 }
 
-// Initialize data cache
+// Function to initialize data cache
 async function initializeCache() {
+  console.log('Initializing data cache...');
   try {
-    console.log('Initializing data cache...');
     console.log('GitHub Token available:', !!GITHUB_TOKEN);
     
-    const [gigs, members, commitments] = await Promise.all([
+    const [gigsFile, membersFile, commitmentsFile] = await Promise.all([
       getFileContent('gigs.json'),
       getFileContent('members.json'),
       getFileContent('commitments.json'),
     ]);
+
+    dataCache.gigs = JSON.parse(decodeContent(gigsFile.content));
+    dataCache.members = JSON.parse(decodeContent(membersFile.content));
+    dataCache.commitments = JSON.parse(decodeContent(commitmentsFile.content));
     
-    console.log('Loaded data:', {
-      gigsCount: gigs.length,
-      membersCount: members.length,
-      commitmentsCount: commitments.length
-    });
-    
-    dataCache = {
-      gigs: gigs || [],
-      members: members || [],
-      commitments: commitments || [],
-    };
-    
-    console.log('Data cache initialized successfully');
+    console.log(`Cache initialized with ${dataCache.gigs.length} gigs, ${dataCache.members.length} members, and ${dataCache.commitments.length} commitments`);
   } catch (error) {
-    console.error('Error initializing cache:', error.message);
+    console.error('Failed to initialize cache:', error);
     dataCache = { gigs: [], members: [], commitments: [] };
   }
 }
@@ -210,9 +200,43 @@ app.delete('/api/gigs/:id', async (req, res) => {
   }
 });
 
+// Authentication endpoint
+app.post('/api/login', async (req, res) => {
+  console.log('Login attempt for:', req.body.email);
+  try {
+    const { email, password } = req.body;
+    const members = dataCache.members;
+    
+    console.log('Looking up user in members list...');
+    const user = members.find(
+      (member) => member.email === email && member.password === password
+    );
+
+    if (user) {
+      console.log('User found:', user.email);
+      const { password: _, ...userWithoutPassword } = user;
+      res.json({ user: userWithoutPassword });
+    } else {
+      console.log('User not found or invalid credentials');
+      res.status(401).json({ error: 'Invalid credentials' });
+    }
+  } catch (error) {
+    console.error('Login error:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
 // Members endpoints
-app.get('/api/members', (_, res) => {
-  res.json({ members: dataCache.members });
+app.get('/api/members', async (req, res) => {
+  console.log('GET /api/members');
+  try {
+    const members = dataCache.members.map(({ password: _, ...member }) => member);
+    console.log(`Returning ${members.length} members`);
+    res.json(members);
+  } catch (error) {
+    console.error('Error fetching members:', error);
+    res.status(500).json({ error: 'Failed to fetch members' });
+  }
 });
 
 app.post('/api/members', async (req, res) => {
