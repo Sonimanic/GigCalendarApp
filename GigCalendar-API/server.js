@@ -76,46 +76,16 @@ async function getFileContent(path) {
     const response = await octokit.rest.repos.getContent({
       owner: REPO_OWNER,
       repo: REPO_NAME,
-      path: `GigCalendar-API/data/${path}`,
+      path: `data/${path}`,
     });
     console.log(`Successfully fetched ${path}`);
     return response.data;
   } catch (error) {
     console.error(`Error fetching ${path}:`, error.message);
-    throw error;
-  }
-}
-
-// Function to update file content on GitHub
-async function updateFileContent(path, content) {
-  try {
-    let sha;
-    try {
-      const currentFile = await octokit.rest.repos.getContent({
-        owner: REPO_OWNER,
-        repo: REPO_NAME,
-        path: `GigCalendar-API/data/${path}`,
-      });
-      sha = currentFile.data.sha;
-    } catch (error) {
-      if (error.status !== 404) throw error;
-      // File doesn't exist yet, that's okay
+    if (error.status === 404) {
+      console.log(`${path} not found, returning empty array`);
+      return { content: encodeContent([]) };
     }
-
-    const fileContent = {
-      [path.replace('.json', '')]: content
-    };
-
-    await octokit.rest.repos.createOrUpdateFileContents({
-      owner: REPO_OWNER,
-      repo: REPO_NAME,
-      path: `GigCalendar-API/data/${path}`,
-      message: `Update ${path}`,
-      content: encodeContent(fileContent),
-      sha,
-    });
-  } catch (error) {
-    console.error(`Error updating file ${path}:`, error.message);
     throw error;
   }
 }
@@ -132,14 +102,64 @@ async function initializeCache() {
       getFileContent('commitments.json'),
     ]);
 
-    dataCache.gigs = JSON.parse(decodeContent(gigsFile.content));
-    dataCache.members = JSON.parse(decodeContent(membersFile.content));
-    dataCache.commitments = JSON.parse(decodeContent(commitmentsFile.content));
+    const gigsData = JSON.parse(decodeContent(gigsFile.content));
+    const membersData = JSON.parse(decodeContent(membersFile.content));
+    const commitmentsData = JSON.parse(decodeContent(commitmentsFile.content));
+
+    dataCache = {
+      gigs: Array.isArray(gigsData.gigs) ? gigsData.gigs : [],
+      members: Array.isArray(membersData.members) ? membersData.members : [],
+      commitments: Array.isArray(commitmentsData.commitments) ? commitmentsData.commitments : []
+    };
     
-    console.log(`Cache initialized with ${dataCache.gigs.length} gigs, ${dataCache.members.length} members, and ${dataCache.commitments.length} commitments`);
+    console.log('Cache initialized with:', {
+      gigs: dataCache.gigs.length,
+      members: dataCache.members.length,
+      commitments: dataCache.commitments.length
+    });
   } catch (error) {
     console.error('Failed to initialize cache:', error);
     dataCache = { gigs: [], members: [], commitments: [] };
+  }
+}
+
+// Function to update file content on GitHub
+async function updateFileContent(path, content) {
+  try {
+    let sha;
+    try {
+      const currentFile = await octokit.rest.repos.getContent({
+        owner: REPO_OWNER,
+        repo: REPO_NAME,
+        path: `data/${path}`,
+      });
+      sha = currentFile.data.sha;
+    } catch (error) {
+      if (error.status !== 404) throw error;
+      // File doesn't exist yet, that's okay
+    }
+
+    const fileContent = {
+      [path.replace('.json', '')]: content
+    };
+
+    await octokit.rest.repos.createOrUpdateFileContents({
+      owner: REPO_OWNER,
+      repo: REPO_NAME,
+      path: `data/${path}`,
+      message: `Update ${path}`,
+      content: encodeContent(fileContent),
+      sha,
+    });
+
+    // Update local cache
+    dataCache[path.replace('.json', '')] = content;
+    
+    // Emit update to connected clients
+    emitUpdate(path.replace('.json', ''), content);
+  } catch (error) {
+    console.error(`Error updating file ${path}:`, error.message);
+    throw error;
   }
 }
 
