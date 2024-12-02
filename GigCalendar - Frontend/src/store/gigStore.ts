@@ -4,13 +4,15 @@ import { loadGigs, loadCommitments, saveGigs, saveCommitments, deleteGig as apiD
 import { io } from 'socket.io-client';
 
 const WS_URL = import.meta.env.VITE_WS_URL || 'http://localhost:3000';
-console.log('Connecting to WebSocket:', WS_URL);
+console.log('WebSocket URL:', WS_URL);
 
 const socket = io(WS_URL, {
-  path: '/socket.io/',
-  transports: ['websocket', 'polling'],
+  path: '/socket.io',
+  transports: ['websocket'],
   reconnectionAttempts: 5,
-  reconnectionDelay: 1000
+  reconnectionDelay: 1000,
+  withCredentials: true,
+  autoConnect: false
 });
 
 socket.on('connect', () => {
@@ -24,6 +26,9 @@ socket.on('connect_error', (error) => {
 socket.on('disconnect', (reason) => {
   console.log('Socket disconnected:', reason);
 });
+
+// Try to connect
+socket.connect();
 
 interface GigState {
   gigs: Gig[];

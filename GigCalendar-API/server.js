@@ -23,11 +23,15 @@ app.use(cors({
 // Configure Socket.IO with CORS
 const io = new Server(httpServer, {
   cors: {
-    origin: allowedOrigins,
-    methods: ['GET', 'POST', 'PUT', 'DELETE'],
+    origin: process.env.FRONTEND_URL || "https://gig-calendar-app.vercel.app",
+    methods: ["GET", "POST"],
+    allowedHeaders: ["Content-Type"],
     credentials: true
   },
-  path: '/socket.io/'
+  path: '/socket.io',
+  transports: ['websocket'],
+  allowEIO3: true,
+  pingTimeout: 60000
 });
 
 app.use(express.json());
@@ -249,9 +253,14 @@ initializeCache().then(() => {
 
 // Socket.IO connection handling
 io.on('connection', (socket) => {
-  console.log('Client connected');
+  console.log('Client connected:', socket.id);
+  
   socket.on('disconnect', () => {
-    console.log('Client disconnected');
+    console.log('Client disconnected:', socket.id);
+  });
+
+  socket.on('error', (error) => {
+    console.error('Socket error:', error);
   });
 });
 
