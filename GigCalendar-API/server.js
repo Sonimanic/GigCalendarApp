@@ -9,11 +9,32 @@ dotenv.config();
 
 const app = express();
 const httpServer = createServer(app);
+
+const allowedOrigins = ['https://gig-calendar-app.vercel.app', 'http://localhost:5173'];
+
+// Configure CORS for Express
+app.use(cors({
+  origin: allowedOrigins,
+  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
+  credentials: true,
+  allowedHeaders: ['Content-Type', 'Authorization']
+}));
+
+// Configure Socket.IO with CORS
 const io = new Server(httpServer, {
   cors: {
-    origin: process.env.FRONTEND_URL || '*',
-    methods: ['GET', 'POST', 'PUT', 'DELETE']
-  }
+    origin: allowedOrigins,
+    methods: ['GET', 'POST', 'PUT', 'DELETE'],
+    credentials: true
+  },
+  path: '/socket.io/'
+});
+
+app.use(express.json());
+
+// Add a test endpoint
+app.get('/', (req, res) => {
+  res.json({ message: 'API is working!' });
 });
 
 const port = process.env.PORT || 3000;
@@ -128,40 +149,10 @@ async function initializeCache() {
   }
 }
 
-// Configure CORS
-app.use(cors({
-  origin: ['https://gig-calendar-app.vercel.app', 'http://localhost:5173'],
-  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
-  credentials: true,
-  allowedHeaders: ['Content-Type', 'Authorization']
-}));
-
-app.use(express.json());
-
-// Add a test endpoint
-app.get('/test', (req, res) => {
-  res.json({ message: 'API is working!' });
-});
-
 // Emit updates to all connected clients
 const emitUpdate = (type, data) => {
   io.emit('dataUpdate', { type, data });
 };
-
-// API endpoints
-app.post('/api/login', (req, res) => {
-  const { email, password } = req.body;
-  console.log('Login attempt for:', email);
-  const user = dataCache.members.find(m => m.email === email && m.password === password);
-  
-  if (user) {
-    console.log('Login successful for:', email);
-    res.json({ success: true, user });
-  } else {
-    console.log('Login failed for:', email);
-    res.status(401).json({ success: false, message: 'Invalid credentials' });
-  }
-});
 
 // Gigs endpoints
 app.get('/api/gigs', (_, res) => {

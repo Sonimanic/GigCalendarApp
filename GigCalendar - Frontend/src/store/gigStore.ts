@@ -4,7 +4,12 @@ import { loadGigs, loadCommitments, saveGigs, saveCommitments, deleteGig as apiD
 import { io } from 'socket.io-client';
 
 const WS_URL = import.meta.env.VITE_WS_URL || 'http://localhost:3000';
-const socket = io(WS_URL);
+const socket = io(WS_URL, {
+  path: '/socket.io/',
+  transports: ['websocket', 'polling'],
+  reconnectionAttempts: 5,
+  reconnectionDelay: 1000
+});
 
 interface GigState {
   gigs: Gig[];
