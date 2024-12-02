@@ -110,11 +110,18 @@ const decodeContent = (content) => JSON.parse(Buffer.from(content, 'base64').toS
 async function getFileContent(path) {
   console.log(`Fetching file content for: ${path}`);
   try {
+    console.log('Fetching from:', {
+      owner: REPO_OWNER,
+      repo: REPO_NAME,
+      path: `GigCalendar-API/data/${path}`
+    });
+
     const response = await octokit.rest.repos.getContent({
       owner: REPO_OWNER,
       repo: REPO_NAME,
-      path: `data/${path}`,
+      path: `GigCalendar-API/data/${path}`,
     });
+    
     console.log(`Successfully fetched ${path}`);
     return response.data;
   } catch (error) {
@@ -134,6 +141,7 @@ async function initializeCache() {
   try {
     console.log('GitHub Token available:', !!GITHUB_TOKEN);
     console.log('GitHub Token length:', GITHUB_TOKEN?.length);
+    console.log('Repository:', `${REPO_OWNER}/${REPO_NAME}`);
     
     const [gigsFile, membersFile, commitmentsFile] = await Promise.all([
       getFileContent('gigs.json'),
@@ -166,6 +174,11 @@ async function initializeCache() {
     });
   } catch (error) {
     console.error('Failed to initialize cache:', error);
+    console.error('Error details:', {
+      message: error.message,
+      status: error.status,
+      response: error.response?.data
+    });
     dataCache = { gigs: [], members: [], commitments: [] };
   }
 }
@@ -173,12 +186,13 @@ async function initializeCache() {
 // Function to update file content on GitHub
 async function updateFileContent(path, content) {
   try {
+    const octokit = new Octokit({ auth: GITHUB_TOKEN });
     let sha;
     try {
       const currentFile = await octokit.rest.repos.getContent({
         owner: REPO_OWNER,
         repo: REPO_NAME,
-        path: `data/${path}`,
+        path: `GigCalendar-API/data/${path}`,
       });
       sha = currentFile.data.sha;
     } catch (error) {
@@ -193,7 +207,7 @@ async function updateFileContent(path, content) {
     await octokit.rest.repos.createOrUpdateFileContents({
       owner: REPO_OWNER,
       repo: REPO_NAME,
-      path: `data/${path}`,
+      path: `GigCalendar-API/data/${path}`,
       message: `Update ${path}`,
       content: encodeContent(fileContent),
       sha,
@@ -205,7 +219,7 @@ async function updateFileContent(path, content) {
     // Emit update to connected clients
     emitUpdate(path.replace('.json', ''), content);
   } catch (error) {
-    console.error(`Error updating file ${path}:`, error.message);
+    console.error(`Error updating file ${path}:`, error);
     throw error;
   }
 }
