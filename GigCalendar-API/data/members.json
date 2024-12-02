@@ -47,6 +47,14 @@
       "phone": "555-0106",
       "password": "member123",
       "role": "member"
+    },
+    {
+      "id": "2acbdbe6-eaf7-4103-b283-5b1b5612e457",
+      "name": "Grant Frabe",
+      "email": "GF@gmail.com",
+      "phone": "111111111111111",
+      "password": "admin123",
+      "role": "member"
     }
   ]
 }
