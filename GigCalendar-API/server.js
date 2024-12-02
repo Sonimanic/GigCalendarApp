@@ -82,9 +82,10 @@ async function getFileContent(path) {
     return response.data;
   } catch (error) {
     console.error(`Error fetching ${path}:`, error.message);
+    console.error('Full error:', error);
     if (error.status === 404) {
       console.log(`${path} not found, returning empty array`);
-      return { content: encodeContent([]) };
+      return { content: encodeContent({ [path.replace('.json', '')]: [] }) };
     }
     throw error;
   }
@@ -95,6 +96,7 @@ async function initializeCache() {
   console.log('Initializing data cache...');
   try {
     console.log('GitHub Token available:', !!GITHUB_TOKEN);
+    console.log('GitHub Token length:', GITHUB_TOKEN?.length);
     
     const [gigsFile, membersFile, commitmentsFile] = await Promise.all([
       getFileContent('gigs.json'),
@@ -102,9 +104,17 @@ async function initializeCache() {
       getFileContent('commitments.json'),
     ]);
 
+    console.log('Files fetched, decoding content...');
+
     const gigsData = JSON.parse(decodeContent(gigsFile.content));
     const membersData = JSON.parse(decodeContent(membersFile.content));
     const commitmentsData = JSON.parse(decodeContent(commitmentsFile.content));
+
+    console.log('Raw data:', { 
+      gigs: gigsData,
+      members: membersData,
+      commitments: commitmentsData
+    });
 
     dataCache = {
       gigs: Array.isArray(gigsData.gigs) ? gigsData.gigs : [],
@@ -290,10 +300,23 @@ app.post('/api/commitments', async (req, res) => {
   }
 });
 
-// Initialize cache when server starts
-initializeCache().then(() => {
-  console.log('Data cache initialized');
-});
+// Initialize cache before starting server
+async function startServer() {
+  try {
+    console.log('Starting server initialization...');
+    await initializeCache();
+    console.log('Cache initialized successfully');
+
+    httpServer.listen(port, () => {
+      console.log(`Server running on port ${port}`);
+    });
+  } catch (error) {
+    console.error('Failed to start server:', error);
+    process.exit(1);
+  }
+}
+
+startServer();
 
 // Socket.IO connection handling
 io.on('connection', (socket) => {
@@ -306,8 +329,4 @@ io.on('connection', (socket) => {
   socket.on('error', (error) => {
     console.error('Socket error:', error);
   });
-});
-
-httpServer.listen(port, () => {
-  console.log(`Server running on port ${port}`);
 });

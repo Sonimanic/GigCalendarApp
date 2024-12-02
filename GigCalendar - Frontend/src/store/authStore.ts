@@ -74,15 +74,22 @@ export const useAuthStore = create<AuthState>()(
             });
 
             console.log('Login response status:', response.status);
-            const data = await response.json();
-
+            
             if (!response.ok) {
+              const data = await response.json().catch(() => ({ error: 'Invalid response from server' }));
               console.error('Login failed:', data.error);
               set({ error: data.error || 'Login failed' });
               return false;
             }
 
-            console.log('Login successful');
+            const data = await response.json();
+            if (!data.user) {
+              console.error('Login failed: No user data received');
+              set({ error: 'Invalid response from server' });
+              return false;
+            }
+
+            console.log('Login successful:', data.user);
             set({ user: data.user, isAuthenticated: true, error: null });
             return true;
           } catch (error) {
