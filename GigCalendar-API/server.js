@@ -18,11 +18,14 @@ const httpServer = createServer(app);
 // Function to validate origin
 const isValidOrigin = (origin) => {
   if (!origin) return true; // Allow requests with no origin (like mobile apps or curl)
-  return origin.endsWith('.vercel.app') || 
-         origin === 'http://localhost:5173' ||
-         origin === 'https://gig-calendar-app.vercel.app' ||
-         origin === 'https://gig-calendar-app-git-main-sonimanic.vercel.app' ||
-         origin === 'https://gig-calendar-app-sonimanic.vercel.app';
+  const allowedOrigins = [
+    'http://localhost:5173',
+    'https://gig-calendar-app.vercel.app',
+    'https://gig-calendar-app-git-main-sonimanic.vercel.app',
+    'https://gig-calendar-app-sonimanic.vercel.app',
+    'https://gigcalendar-api.vercel.app'
+  ];
+  return allowedOrigins.includes(origin) || origin.endsWith('.vercel.app');
 };
 
 // Configure CORS for Express
