@@ -1,9 +1,14 @@
 import express from 'express';
 import cors from 'cors';
-import { Octokit } from 'octokit';
 import dotenv from 'dotenv';
 import { createServer } from 'http';
 import { Server } from 'socket.io';
+import mongoose from 'mongoose';
+
+// Import models
+import Member from './models/Member.js';
+import Gig from './models/Gig.js';
+import Commitment from './models/Commitment.js';
 
 dotenv.config();
 
@@ -57,245 +62,33 @@ const io = new Server(httpServer, {
   maxHttpBufferSize: 1e8
 });
 
-// Add middleware to log all Socket.IO events
-io.use((socket, next) => {
-  console.log('Socket middleware - connection attempt from:', socket.handshake.address);
-  console.log('Socket middleware - headers:', socket.handshake.headers);
-  next();
-});
-
 app.use(express.json());
 
-// Add a test endpoint
-app.get('/', (req, res) => {
-  res.json({ 
-    message: 'API is working!',
-    cache: {
-      gigs: dataCache.gigs.length,
-      members: dataCache.members.length,
-      commitments: dataCache.commitments.length
-    }
+// MongoDB Connection
+const MONGODB_URI = process.env.MONGODB_URI || 'mongodb://localhost:27017/gigcalendar';
+
+mongoose.connect(MONGODB_URI)
+  .then(() => console.log('Connected to MongoDB'))
+  .catch(err => {
+    console.error('MongoDB connection error:', err);
+    process.exit(1);
   });
-});
-
-const port = process.env.PORT || 3000;
-const GITHUB_TOKEN = process.env.GITHUB_TOKEN;
-const REPO_OWNER = 'Sonimanic';
-const REPO_NAME = 'GigCalendarApp';
-
-// Check if GitHub token is available
-if (!GITHUB_TOKEN) {
-  console.error('GITHUB_TOKEN is not set. Please set it in your environment variables.');
-  process.exit(1);
-}
-
-const octokit = new Octokit({
-  auth: GITHUB_TOKEN
-});
-
-// Cache for data
-let dataCache = {
-  gigs: [],
-  members: [],
-  commitments: []
-};
-
-// Function to encode content for GitHub
-const encodeContent = (content) => Buffer.from(JSON.stringify(content, null, 2)).toString('base64');
-
-// Function to decode content from GitHub
-const decodeContent = (content) => JSON.parse(Buffer.from(content, 'base64').toString());
-
-// Function to get file content from GitHub
-async function getFileContent(path) {
-  console.log(`Fetching file content for: ${path}`);
-  try {
-    console.log('Fetching from:', {
-      owner: REPO_OWNER,
-      repo: REPO_NAME,
-      path: `GigCalendar-API/data/${path}`
-    });
-
-    const response = await octokit.rest.repos.getContent({
-      owner: REPO_OWNER,
-      repo: REPO_NAME,
-      path: `GigCalendar-API/data/${path}`,
-    });
-    
-    console.log(`Successfully fetched ${path}`);
-    return response.data;
-  } catch (error) {
-    console.error(`Error fetching ${path}:`, error.message);
-    console.error('Full error:', error);
-    if (error.status === 404) {
-      console.log(`${path} not found, returning empty array`);
-      return { content: encodeContent({ [path.replace('.json', '')]: [] }) };
-    }
-    throw error;
-  }
-}
-
-// Function to initialize data cache
-async function initializeCache() {
-  console.log('Initializing data cache...');
-  try {
-    console.log('GitHub Token available:', !!GITHUB_TOKEN);
-    console.log('GitHub Token length:', GITHUB_TOKEN?.length);
-    console.log('Repository:', `${REPO_OWNER}/${REPO_NAME}`);
-    
-    const [gigsFile, membersFile, commitmentsFile] = await Promise.all([
-      getFileContent('gigs.json'),
-      getFileContent('members.json'),
-      getFileContent('commitments.json'),
-    ]);
-
-    console.log('Files fetched, decoding content...');
-
-    const gigsData = JSON.parse(decodeContent(gigsFile.content));
-    const membersData = JSON.parse(decodeContent(membersFile.content));
-    const commitmentsData = JSON.parse(decodeContent(commitmentsFile.content));
-
-    console.log('Raw data:', { 
-      gigs: gigsData,
-      members: membersData,
-      commitments: commitmentsData
-    });
-
-    dataCache = {
-      gigs: Array.isArray(gigsData.gigs) ? gigsData.gigs : [],
-      members: Array.isArray(membersData.members) ? membersData.members : [],
-      commitments: Array.isArray(commitmentsData.commitments) ? commitmentsData.commitments : []
-    };
-    
-    console.log('Cache initialized with:', {
-      gigs: dataCache.gigs.length,
-      members: dataCache.members.length,
-      commitments: dataCache.commitments.length
-    });
-  } catch (error) {
-    console.error('Failed to initialize cache:', error);
-    console.error('Error details:', {
-      message: error.message,
-      status: error.status,
-      response: error.response?.data
-    });
-    dataCache = { gigs: [], members: [], commitments: [] };
-  }
-}
-
-// Function to update file content on GitHub
-async function updateFileContent(path, content) {
-  try {
-    const octokit = new Octokit({ auth: GITHUB_TOKEN });
-    let sha;
-    try {
-      const currentFile = await octokit.rest.repos.getContent({
-        owner: REPO_OWNER,
-        repo: REPO_NAME,
-        path: `GigCalendar-API/data/${path}`,
-      });
-      sha = currentFile.data.sha;
-    } catch (error) {
-      if (error.status !== 404) throw error;
-      // File doesn't exist yet, that's okay
-    }
-
-    const fileContent = {
-      [path.replace('.json', '')]: content
-    };
-
-    await octokit.rest.repos.createOrUpdateFileContents({
-      owner: REPO_OWNER,
-      repo: REPO_NAME,
-      path: `GigCalendar-API/data/${path}`,
-      message: `Update ${path}`,
-      content: encodeContent(fileContent),
-      sha,
-    });
-
-    // Update local cache
-    dataCache[path.replace('.json', '')] = content;
-    
-    // Emit update to connected clients
-    emitUpdate(path.replace('.json', ''), content);
-  } catch (error) {
-    console.error(`Error updating file ${path}:`, error);
-    throw error;
-  }
-}
 
 // Emit updates to all connected clients
 const emitUpdate = (type, data) => {
   io.emit('dataUpdate', { type, data });
 };
 
-// Gigs endpoints
-app.get('/api/gigs', (_, res) => {
-  console.log('GET /api/gigs - Returning gigs:', dataCache.gigs.length);
-  res.json({ gigs: dataCache.gigs });
-});
-
-app.post('/api/gigs', async (req, res) => {
-  try {
-    const newGig = req.body;
-    dataCache.gigs.push(newGig);
-    await updateFileContent('gigs.json', dataCache.gigs);
-    emitUpdate('gigs', dataCache.gigs);
-    res.json(newGig);
-  } catch (error) {
-    console.error('Failed to add gig:', error);
-    res.status(500).json({ error: 'Failed to add gig' });
-  }
-});
-
-app.put('/api/gigs/:id', async (req, res) => {
-  try {
-    const { id } = req.params;
-    const updates = req.body;
-    const index = dataCache.gigs.findIndex(g => g.id === id);
-    
-    if (index !== -1) {
-      dataCache.gigs[index] = { ...dataCache.gigs[index], ...updates };
-      await updateFileContent('gigs.json', dataCache.gigs);
-      emitUpdate('gigs', dataCache.gigs);
-      res.json(dataCache.gigs[index]);
-    } else {
-      res.status(404).json({ error: 'Gig not found' });
-    }
-  } catch (error) {
-    console.error('Failed to update gig:', error);
-    res.status(500).json({ error: 'Failed to update gig' });
-  }
-});
-
-app.delete('/api/gigs/:id', async (req, res) => {
-  try {
-    const { id } = req.params;
-    dataCache.gigs = dataCache.gigs.filter(g => g.id !== id);
-    await updateFileContent('gigs.json', dataCache.gigs);
-    emitUpdate('gigs', dataCache.gigs);
-    res.json({ success: true });
-  } catch (error) {
-    console.error('Failed to delete gig:', error);
-    res.status(500).json({ error: 'Failed to delete gig' });
-  }
-});
-
 // Authentication endpoint
 app.post('/api/login', async (req, res) => {
   console.log('Login attempt for:', req.body.email);
   try {
     const { email, password } = req.body;
-    const members = dataCache.members;
-    
-    console.log('Looking up user in members list...');
-    const user = members.find(
-      (member) => member.email === email && member.password === password
-    );
+    const user = await Member.findOne({ email, password });
 
     if (user) {
       console.log('User found:', user.email);
-      const { password: _, ...userWithoutPassword } = user;
+      const { password: _, ...userWithoutPassword } = user.toObject();
       res.json({ user: userWithoutPassword });
     } else {
       console.log('User not found or invalid credentials');
@@ -309,10 +102,8 @@ app.post('/api/login', async (req, res) => {
 
 // Members endpoints
 app.get('/api/members', async (req, res) => {
-  console.log('GET /api/members');
   try {
-    const members = dataCache.members.map(({ password: _, ...member }) => member);
-    console.log(`Returning ${members.length} members`);
+    const members = await Member.find({}, { password: 0 });
     res.json(members);
   } catch (error) {
     console.error('Error fetching members:', error);
@@ -322,52 +113,101 @@ app.get('/api/members', async (req, res) => {
 
 app.post('/api/members', async (req, res) => {
   try {
-    const newMember = req.body;
-    dataCache.members.push(newMember);
-    await updateFileContent('members.json', dataCache.members);
-    emitUpdate('members', dataCache.members);
-    res.json(newMember);
+    const member = new Member(req.body);
+    await member.save();
+    const { password: _, ...memberWithoutPassword } = member.toObject();
+    emitUpdate('members', await Member.find({}, { password: 0 }));
+    res.json(memberWithoutPassword);
   } catch (error) {
     console.error('Failed to add member:', error);
     res.status(500).json({ error: 'Failed to add member' });
   }
 });
 
+// Gigs endpoints
+app.get('/api/gigs', async (req, res) => {
+  try {
+    const gigs = await Gig.find();
+    res.json({ gigs });
+  } catch (error) {
+    console.error('Error fetching gigs:', error);
+    res.status(500).json({ error: 'Failed to fetch gigs' });
+  }
+});
+
+app.post('/api/gigs', async (req, res) => {
+  try {
+    const gig = new Gig(req.body);
+    await gig.save();
+    emitUpdate('gigs', await Gig.find());
+    res.json(gig);
+  } catch (error) {
+    console.error('Failed to add gig:', error);
+    res.status(500).json({ error: 'Failed to add gig' });
+  }
+});
+
+app.put('/api/gigs/:id', async (req, res) => {
+  try {
+    const gig = await Gig.findOneAndUpdate(
+      { id: req.params.id },
+      req.body,
+      { new: true }
+    );
+    if (!gig) {
+      return res.status(404).json({ error: 'Gig not found' });
+    }
+    emitUpdate('gigs', await Gig.find());
+    res.json(gig);
+  } catch (error) {
+    console.error('Failed to update gig:', error);
+    res.status(500).json({ error: 'Failed to update gig' });
+  }
+});
+
+app.delete('/api/gigs/:id', async (req, res) => {
+  try {
+    const gig = await Gig.findOneAndDelete({ id: req.params.id });
+    if (!gig) {
+      return res.status(404).json({ error: 'Gig not found' });
+    }
+    emitUpdate('gigs', await Gig.find());
+    res.json({ success: true });
+  } catch (error) {
+    console.error('Failed to delete gig:', error);
+    res.status(500).json({ error: 'Failed to delete gig' });
+  }
+});
+
 // Commitments endpoints
-app.get('/api/commitments', (_, res) => {
-  res.json({ commitments: dataCache.commitments });
+app.get('/api/commitments', async (req, res) => {
+  try {
+    const commitments = await Commitment.find();
+    res.json({ commitments });
+  } catch (error) {
+    console.error('Error fetching commitments:', error);
+    res.status(500).json({ error: 'Failed to fetch commitments' });
+  }
 });
 
 app.post('/api/commitments', async (req, res) => {
   try {
-    const newCommitments = req.body;
-    dataCache.commitments = newCommitments;
-    await updateFileContent('commitments.json', dataCache.commitments);
-    emitUpdate('commitments', dataCache.commitments);
-    res.json(newCommitments);
+    const commitment = new Commitment(req.body);
+    await commitment.save();
+    emitUpdate('commitments', await Commitment.find());
+    res.json(commitment);
   } catch (error) {
     console.error('Failed to update commitments:', error);
     res.status(500).json({ error: 'Failed to update commitments' });
   }
 });
 
-// Initialize cache before starting server
-async function startServer() {
-  try {
-    console.log('Starting server initialization...');
-    await initializeCache();
-    console.log('Cache initialized successfully');
-
-    httpServer.listen(port, () => {
-      console.log(`Server running on port ${port}`);
-    });
-  } catch (error) {
-    console.error('Failed to start server:', error);
-    process.exit(1);
-  }
-}
-
-startServer();
+// Add middleware to log all Socket.IO events
+io.use((socket, next) => {
+  console.log('Socket middleware - connection attempt from:', socket.handshake.address);
+  console.log('Socket middleware - headers:', socket.handshake.headers);
+  next();
+});
 
 // Socket.IO connection handling
 io.on('connection', (socket) => {
@@ -380,4 +220,9 @@ io.on('connection', (socket) => {
   socket.on('error', (error) => {
     console.error('Socket error:', error);
   });
+});
+
+const port = process.env.PORT || 3000;
+httpServer.listen(port, () => {
+  console.log(`Server running on port ${port}`);
 });
