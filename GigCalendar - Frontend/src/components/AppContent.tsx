@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Routes, Route, Link, useLocation, Navigate } from 'react-router-dom';
 import { useAuthStore } from '../store/authStore';
 import { AdminDashboard } from '../pages/AdminDashboard';
@@ -11,6 +11,8 @@ export const AppContent: React.FC = () => {
   const { user, isAuthenticated, logout } = useAuthStore();
   const location = useLocation();
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [isLoading, setIsLoading] = useState(true);
 
   const isPublicRoute = location.pathname === '/';
   const isLoginRoute = location.pathname === '/login';
@@ -18,6 +20,40 @@ export const AppContent: React.FC = () => {
   const toggleMobileMenu = () => {
     setIsMobileMenuOpen(!isMobileMenuOpen);
   };
+
+  useEffect(() => {
+    // Check if API is accessible
+    fetch(process.env.VITE_API_URL || 'http://localhost:3000')
+      .then(response => {
+        if (!response.ok) {
+          throw new Error('API is not accessible');
+        }
+        setError(null);
+      })
+      .catch(err => {
+        console.error('API Error:', err);
+        setError('Unable to connect to the server. Please try again later.');
+      })
+      .finally(() => {
+        setIsLoading(false);
+      });
+  }, []);
+
+  if (isLoading) {
+    return (
+      <div className="min-h-screen bg-dark-900 text-gray-100 flex items-center justify-center">
+        <div className="text-xl">Loading...</div>
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div className="min-h-screen bg-dark-900 text-gray-100 flex items-center justify-center">
+        <div className="text-xl text-red-500">{error}</div>
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen bg-dark-900 text-gray-100">

@@ -21,6 +21,12 @@ const GITHUB_TOKEN = process.env.GITHUB_TOKEN;
 const REPO_OWNER = 'Sonimanic';
 const REPO_NAME = 'GigCalendarApp';
 
+// Check if GitHub token is available
+if (!GITHUB_TOKEN) {
+  console.error('GITHUB_TOKEN is not set. Please set it in your environment variables.');
+  process.exit(1);
+}
+
 const octokit = new Octokit({
   auth: GITHUB_TOKEN
 });
@@ -48,20 +54,29 @@ async function getFileContent(path) {
     });
     return decodeContent(response.data.content);
   } catch (error) {
-    console.error(`Error getting ${path}:`, error);
-    return null;
+    console.error(`Error getting file content for ${path}:`, error.message);
+    if (error.status === 404) {
+      return []; // Return empty array for new files
+    }
+    throw error;
   }
 }
 
 // Function to update file content on GitHub
 async function updateFileContent(path, content) {
   try {
-    // Get the current file to get its SHA
-    const currentFile = await octokit.rest.repos.getContent({
-      owner: REPO_OWNER,
-      repo: REPO_NAME,
-      path: `GigCalendar-API/data/${path}`,
-    });
+    let sha;
+    try {
+      const currentFile = await octokit.rest.repos.getContent({
+        owner: REPO_OWNER,
+        repo: REPO_NAME,
+        path: `GigCalendar-API/data/${path}`,
+      });
+      sha = currentFile.data.sha;
+    } catch (error) {
+      if (error.status !== 404) throw error;
+      // File doesn't exist yet, that's okay
+    }
 
     await octokit.rest.repos.createOrUpdateFileContents({
       owner: REPO_OWNER,
@@ -69,27 +84,35 @@ async function updateFileContent(path, content) {
       path: `GigCalendar-API/data/${path}`,
       message: `Update ${path}`,
       content: encodeContent(content),
-      sha: currentFile.data.sha,
+      sha,
     });
-
-    return true;
   } catch (error) {
-    console.error(`Error updating ${path}:`, error);
-    return false;
+    console.error(`Error updating file ${path}:`, error.message);
+    throw error;
   }
 }
 
 // Initialize data cache
 async function initializeCache() {
-  const [gigs, members, commitments] = await Promise.all([
-    getFileContent('gigs.json'),
-    getFileContent('members.json'),
-    getFileContent('commitments.json'),
-  ]);
-
-  if (gigs) dataCache.gigs = gigs.gigs;
-  if (members) dataCache.members = members.members;
-  if (commitments) dataCache.commitments = commitments.commitments;
+  try {
+    console.log('Initializing data cache...');
+    const [gigs, members, commitments] = await Promise.all([
+      getFileContent('gigs.json'),
+      getFileContent('members.json'),
+      getFileContent('commitments.json'),
+    ]);
+    
+    dataCache = {
+      gigs: gigs || [],
+      members: members || [],
+      commitments: commitments || [],
+    };
+    console.log('Data cache initialized successfully');
+  } catch (error) {
+    console.error('Error initializing cache:', error.message);
+    // Don't exit, just start with empty cache
+    dataCache = { gigs: [], members: [], commitments: [] };
+  }
 }
 
 // Configure CORS
