@@ -10,11 +10,24 @@ dotenv.config();
 const app = express();
 const httpServer = createServer(app);
 
-const allowedOrigins = ['https://gig-calendar-app.vercel.app', 'http://localhost:5173'];
+// Function to validate origin
+const isValidOrigin = (origin) => {
+  if (!origin) return false;
+  return origin.endsWith('.vercel.app') || 
+         origin === 'http://localhost:5173' ||
+         origin === 'https://gig-calendar-app.vercel.app';
+};
 
 // Configure CORS for Express
 app.use(cors({
-  origin: allowedOrigins,
+  origin: (origin, callback) => {
+    if (!origin || isValidOrigin(origin)) {
+      callback(null, true);
+    } else {
+      console.log('Blocked origin:', origin);
+      callback(new Error('Not allowed by CORS'));
+    }
+  },
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
   credentials: true,
   allowedHeaders: ['Content-Type', 'Authorization']
@@ -23,13 +36,20 @@ app.use(cors({
 // Configure Socket.IO with CORS
 const io = new Server(httpServer, {
   cors: {
-    origin: process.env.FRONTEND_URL || "https://gig-calendar-app.vercel.app",
+    origin: (origin, callback) => {
+      if (!origin || isValidOrigin(origin)) {
+        callback(null, true);
+      } else {
+        console.log('Blocked WebSocket origin:', origin);
+        callback(new Error('Not allowed by CORS'));
+      }
+    },
     methods: ["GET", "POST"],
     allowedHeaders: ["Content-Type"],
     credentials: true
   },
   path: '/socket.io',
-  transports: ['websocket'],
+  transports: ['websocket', 'polling'],
   allowEIO3: true,
   pingTimeout: 60000
 });
