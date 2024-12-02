@@ -5,7 +5,14 @@ import { io } from 'socket.io-client';
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:3000/api';
 const WS_URL = import.meta.env.VITE_WS_URL || 'http://localhost:3000';
-const socket = io(WS_URL);
+
+// Configure Socket.IO with fallback options
+const socket = io(WS_URL, {
+  transports: ['polling'],
+  reconnectionAttempts: 3,
+  timeout: 10000,
+  forceNew: true
+});
 
 interface AuthState {
   user: User | null;
@@ -26,7 +33,27 @@ interface AuthState {
 export const useAuthStore = create<AuthState>()(
   persist(
     (set, get) => {
+      let pollInterval: NodeJS.Timeout | null = null;
+
       // Set up Socket.IO listeners
+      socket.on('connect', () => {
+        console.log('Socket connected successfully');
+        if (pollInterval) {
+          clearInterval(pollInterval);
+          pollInterval = null;
+        }
+      });
+
+      socket.on('connect_error', (error) => {
+        console.log('Socket connection error:', error);
+        if (!pollInterval) {
+          console.log('Falling back to polling');
+          pollInterval = setInterval(() => {
+            get().fetchUsers();
+          }, 10000); // Poll every 10 seconds
+        }
+      });
+
       socket.on('dataUpdate', ({ type, data }) => {
         if (type === 'members') {
           set({ users: data });
@@ -47,8 +74,8 @@ export const useAuthStore = create<AuthState>()(
               credentials: 'include',
             });
             
-            console.log('Fetch users response status:', response.status);
             if (!response.ok) {
+              console.error('Failed to fetch users:', response.status);
               throw new Error('Failed to fetch users');
             }
             

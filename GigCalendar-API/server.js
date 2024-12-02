@@ -49,16 +49,33 @@ const io = new Server(httpServer, {
     credentials: true
   },
   path: '/socket.io',
-  transports: ['websocket', 'polling'],
+  transports: ['polling'],
   allowEIO3: true,
-  pingTimeout: 60000
+  pingTimeout: 60000,
+  pingInterval: 25000,
+  upgradeTimeout: 10000,
+  maxHttpBufferSize: 1e8
+});
+
+// Add middleware to log all Socket.IO events
+io.use((socket, next) => {
+  console.log('Socket middleware - connection attempt from:', socket.handshake.address);
+  console.log('Socket middleware - headers:', socket.handshake.headers);
+  next();
 });
 
 app.use(express.json());
 
 // Add a test endpoint
 app.get('/', (req, res) => {
-  res.json({ message: 'API is working!' });
+  res.json({ 
+    message: 'API is working!',
+    cache: {
+      gigs: dataCache.gigs.length,
+      members: dataCache.members.length,
+      commitments: dataCache.commitments.length
+    }
+  });
 });
 
 const port = process.env.PORT || 3000;
