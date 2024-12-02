@@ -16,7 +16,7 @@
     }
   ],
   "env": {
-    "VITE_API_URL": "https://gig-calendar-app-api.vercel.app/api",
-    "VITE_WS_URL": "wss://gig-calendar-app-api.vercel.app"
+    "VITE_API_URL": "https://gigcalendar-api.vercel.app/api",
+    "VITE_WS_URL": "wss://gigcalendar-api.vercel.app"
   }
 }
