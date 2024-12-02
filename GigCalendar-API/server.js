@@ -52,7 +52,8 @@ async function getFileContent(path) {
       repo: REPO_NAME,
       path: `GigCalendar-API/data/${path}`,
     });
-    return decodeContent(response.data.content);
+    const content = decodeContent(response.data.content);
+    return content.gigs || content.members || content.commitments || [];
   } catch (error) {
     console.error(`Error getting file content for ${path}:`, error.message);
     if (error.status === 404) {
@@ -78,12 +79,16 @@ async function updateFileContent(path, content) {
       // File doesn't exist yet, that's okay
     }
 
+    const fileContent = {
+      [path.replace('.json', '')]: content
+    };
+
     await octokit.rest.repos.createOrUpdateFileContents({
       owner: REPO_OWNER,
       repo: REPO_NAME,
       path: `GigCalendar-API/data/${path}`,
       message: `Update ${path}`,
-      content: encodeContent(content),
+      content: encodeContent(fileContent),
       sha,
     });
   } catch (error) {
@@ -150,10 +155,11 @@ app.post('/api/gigs', async (req, res) => {
   try {
     const newGig = req.body;
     dataCache.gigs.push(newGig);
-    await updateFileContent('gigs.json', { gigs: dataCache.gigs });
+    await updateFileContent('gigs.json', dataCache.gigs);
     emitUpdate('gigs', dataCache.gigs);
     res.json(newGig);
   } catch (error) {
+    console.error('Failed to add gig:', error);
     res.status(500).json({ error: 'Failed to add gig' });
   }
 });
@@ -166,13 +172,14 @@ app.put('/api/gigs/:id', async (req, res) => {
     
     if (index !== -1) {
       dataCache.gigs[index] = { ...dataCache.gigs[index], ...updates };
-      await updateFileContent('gigs.json', { gigs: dataCache.gigs });
+      await updateFileContent('gigs.json', dataCache.gigs);
       emitUpdate('gigs', dataCache.gigs);
       res.json(dataCache.gigs[index]);
     } else {
       res.status(404).json({ error: 'Gig not found' });
     }
   } catch (error) {
+    console.error('Failed to update gig:', error);
     res.status(500).json({ error: 'Failed to update gig' });
   }
 });
@@ -181,10 +188,11 @@ app.delete('/api/gigs/:id', async (req, res) => {
   try {
     const { id } = req.params;
     dataCache.gigs = dataCache.gigs.filter(g => g.id !== id);
-    await updateFileContent('gigs.json', { gigs: dataCache.gigs });
+    await updateFileContent('gigs.json', dataCache.gigs);
     emitUpdate('gigs', dataCache.gigs);
     res.json({ success: true });
   } catch (error) {
+    console.error('Failed to delete gig:', error);
     res.status(500).json({ error: 'Failed to delete gig' });
   }
 });
@@ -198,10 +206,11 @@ app.post('/api/members', async (req, res) => {
   try {
     const newMember = req.body;
     dataCache.members.push(newMember);
-    await updateFileContent('members.json', { members: dataCache.members });
+    await updateFileContent('members.json', dataCache.members);
     emitUpdate('members', dataCache.members);
     res.json(newMember);
   } catch (error) {
+    console.error('Failed to add member:', error);
     res.status(500).json({ error: 'Failed to add member' });
   }
 });
@@ -215,10 +224,11 @@ app.post('/api/commitments', async (req, res) => {
   try {
     const newCommitments = req.body;
     dataCache.commitments = newCommitments;
-    await updateFileContent('commitments.json', { commitments: dataCache.commitments });
+    await updateFileContent('commitments.json', dataCache.commitments);
     emitUpdate('commitments', dataCache.commitments);
     res.json(newCommitments);
   } catch (error) {
+    console.error('Failed to update commitments:', error);
     res.status(500).json({ error: 'Failed to update commitments' });
   }
 });
