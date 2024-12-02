@@ -1,17 +1,5 @@
 {
   "version": 2,
-  "buildCommand": "cd \"GigCalendar - Frontend\" && npm install && npm run build",
-  "outputDirectory": "GigCalendar - Frontend/dist",
-  "rewrites": [
-    {
-      "source": "/api/(.*)",
-      "destination": "/api/server.js"
-    },
-    {
-      "source": "/(.*)",
-      "destination": "/index.html"
-    }
-  ],
   "builds": [
     {
       "src": "GigCalendar-API/server.js",
@@ -19,7 +7,24 @@
     },
     {
       "src": "GigCalendar - Frontend/package.json",
-      "use": "@vercel/static-build"
+      "use": "@vercel/static-build",
+      "config": {
+        "distDir": "dist"
+      }
+    }
+  ],
+  "routes": [
+    {
+      "src": "/api/(.*)",
+      "dest": "GigCalendar-API/server.js"
+    },
+    {
+      "src": "/(.*\\.(js|css|ico|png|jpg|jpeg|svg|json))",
+      "dest": "GigCalendar - Frontend/$1"
+    },
+    {
+      "src": "/(.*)",
+      "dest": "GigCalendar - Frontend/index.html"
     }
   ]
 }
