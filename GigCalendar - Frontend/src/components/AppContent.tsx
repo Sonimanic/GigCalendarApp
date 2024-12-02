@@ -22,21 +22,28 @@ export const AppContent: React.FC = () => {
   };
 
   useEffect(() => {
-    // Check if API is accessible
-    fetch(process.env.VITE_API_URL || 'http://localhost:3000')
-      .then(response => {
-        if (!response.ok) {
-          throw new Error('API is not accessible');
+    const checkAPI = async () => {
+      try {
+        console.log('Checking API connection...');
+        const response = await fetch(import.meta.env.VITE_API_URL.replace('/api', ''));
+        const data = await response.json();
+        console.log('API Response:', data);
+        
+        if (data.message === 'API is working!') {
+          console.log('API connection successful');
+          setError(null);
+        } else {
+          throw new Error('Unexpected API response');
         }
-        setError(null);
-      })
-      .catch(err => {
+      } catch (err) {
         console.error('API Error:', err);
         setError('Unable to connect to the server. Please try again later.');
-      })
-      .finally(() => {
+      } finally {
         setIsLoading(false);
-      });
+      }
+    };
+
+    checkAPI();
   }, []);
 
   if (isLoading) {

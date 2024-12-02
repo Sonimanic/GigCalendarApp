@@ -4,11 +4,25 @@ import { loadGigs, loadCommitments, saveGigs, saveCommitments, deleteGig as apiD
 import { io } from 'socket.io-client';
 
 const WS_URL = import.meta.env.VITE_WS_URL || 'http://localhost:3000';
+console.log('Connecting to WebSocket:', WS_URL);
+
 const socket = io(WS_URL, {
   path: '/socket.io/',
   transports: ['websocket', 'polling'],
   reconnectionAttempts: 5,
   reconnectionDelay: 1000
+});
+
+socket.on('connect', () => {
+  console.log('Socket connected successfully');
+});
+
+socket.on('connect_error', (error) => {
+  console.error('Socket connection error:', error);
+});
+
+socket.on('disconnect', (reason) => {
+  console.log('Socket disconnected:', reason);
 });
 
 interface GigState {
@@ -28,6 +42,7 @@ interface GigState {
 export const useGigStore = create<GigState>((set, get) => {
   // Set up Socket.IO listeners
   socket.on('dataUpdate', ({ type, data }) => {
+    console.log('Received data update:', { type, data });
     if (type === 'gigs') {
       set({ gigs: data });
     }
@@ -40,19 +55,28 @@ export const useGigStore = create<GigState>((set, get) => {
     error: null,
 
     fetchGigs: async () => {
+      console.log('Fetching gigs...');
       set({ loading: true });
       try {
-        const gigs = await loadGigs();
-        set({ gigs, loading: false, error: null });
+        const response = await fetch(`${import.meta.env.VITE_API_URL}/gigs`);
+        console.log('Gigs response status:', response.status);
+        if (!response.ok) {
+          throw new Error(`HTTP error! status: ${response.status}`);
+        }
+        const data = await response.json();
+        console.log('Fetched gigs:', data);
+        set({ gigs: data.gigs, loading: false, error: null });
       } catch (error) {
         console.error('Failed to load gigs:', error);
-        set({ error: 'Failed to fetch gigs', loading: false });
+        set({ loading: false, error: 'Failed to load gigs' });
       }
     },
 
     fetchCommitments: async () => {
+      console.log('Fetching commitments...');
       try {
         const commitments = await loadCommitments();
+        console.log('Fetched commitments:', commitments);
         set({ commitments, error: null });
       } catch (error) {
         console.error('Failed to load commitments:', error);
@@ -61,8 +85,8 @@ export const useGigStore = create<GigState>((set, get) => {
     },
 
     addGig: async (gig) => {
+      console.log('Adding gig:', gig);
       try {
-        console.log('Adding gig:', gig);
         await saveGigs(gig);
         console.log('Gig saved successfully');
         set((state) => ({ 
@@ -76,8 +100,10 @@ export const useGigStore = create<GigState>((set, get) => {
     },
 
     updateGig: async (gig) => {
+      console.log('Updating gig:', gig);
       try {
         await apiUpdateGig(gig);
+        console.log('Gig updated successfully');
         set((state) => ({
           gigs: state.gigs.map((g) => (g.id === gig.id ? gig : g)),
           error: null
@@ -89,8 +115,10 @@ export const useGigStore = create<GigState>((set, get) => {
     },
 
     deleteGig: async (id) => {
+      console.log('Deleting gig:', id);
       try {
         await apiDeleteGig(id);
+        console.log('Gig deleted successfully');
         set((state) => ({
           gigs: state.gigs.filter((g) => g.id !== id),
           commitments: state.commitments.filter((c) => c.gigId !== id),
@@ -103,6 +131,7 @@ export const useGigStore = create<GigState>((set, get) => {
     },
 
     updateCommitment: async (commitment) => {
+      console.log('Updating commitment:', commitment);
       try {
         const updatedCommitments = [
           ...get().commitments.filter(
@@ -111,6 +140,7 @@ export const useGigStore = create<GigState>((set, get) => {
           commitment,
         ];
         await saveCommitments(updatedCommitments);
+        console.log('Commitment updated successfully');
         set((state) => ({
           commitments: updatedCommitments,
           error: null
