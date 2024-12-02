@@ -64,14 +64,15 @@ const io = new Server(httpServer, {
 
 app.use(express.json());
 
-// MongoDB Connection
-const MONGODB_URI = process.env.MONGODB_URI || 'mongodb://localhost:27017/gigcalendar';
+// MongoDB connection
+const MONGODB_URI = 'mongodb+srv://bvanportfleet:36GD3syZS4fGS7eO@gigcalendar.gnwe4.mongodb.net/?retryWrites=true&w=majority&appName=GigCalendar';
 
 mongoose.connect(MONGODB_URI)
-  .then(() => console.log('Connected to MongoDB'))
-  .catch(err => {
-    console.error('MongoDB connection error:', err);
-    process.exit(1);
+  .then(() => {
+    console.log('Connected to MongoDB Atlas');
+  })
+  .catch((error) => {
+    console.error('Error connecting to MongoDB:', error);
   });
 
 // Emit updates to all connected clients

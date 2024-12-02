@@ -8,7 +8,8 @@ import Commitment from '../models/Commitment.js';
 
 dotenv.config();
 
-const MONGODB_URI = process.env.MONGODB_URI || 'mongodb://localhost:27017/gigcalendar';
+// MongoDB connection
+const MONGODB_URI = 'mongodb+srv://bvanportfleet:36GD3syZS4fGS7eO@gigcalendar.gnwe4.mongodb.net/?retryWrites=true&w=majority&appName=GigCalendar';
 
 async function readJsonFile(filePath) {
   try {
@@ -24,7 +25,7 @@ async function migrateData() {
   try {
     // Connect to MongoDB
     await mongoose.connect(MONGODB_URI);
-    console.log('Connected to MongoDB');
+    console.log('Connected to MongoDB Atlas');
 
     // Read data files
     const dataDir = path.join(process.cwd(), 'data');
@@ -51,8 +52,14 @@ async function migrateData() {
     }
 
     if (commitments?.length) {
-      await Commitment.insertMany(commitments);
-      console.log(`Migrated ${commitments.length} commitments`);
+      const transformedCommitments = commitments.map(commitment => ({
+        id: `${commitment.userId}-${commitment.gigId}`, // Generate a unique ID
+        memberId: commitment.userId,
+        gigId: commitment.gigId,
+        status: commitment.status
+      }));
+      await Commitment.insertMany(transformedCommitments);
+      console.log(`Migrated ${transformedCommitments.length} commitments`);
     }
 
     console.log('Migration completed successfully');
