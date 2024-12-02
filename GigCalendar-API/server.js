@@ -101,33 +101,47 @@ async function updateFileContent(path, content) {
 async function initializeCache() {
   try {
     console.log('Initializing data cache...');
+    console.log('GitHub Token available:', !!GITHUB_TOKEN);
+    
     const [gigs, members, commitments] = await Promise.all([
       getFileContent('gigs.json'),
       getFileContent('members.json'),
       getFileContent('commitments.json'),
     ]);
     
+    console.log('Loaded data:', {
+      gigsCount: gigs.length,
+      membersCount: members.length,
+      commitmentsCount: commitments.length
+    });
+    
     dataCache = {
       gigs: gigs || [],
       members: members || [],
       commitments: commitments || [],
     };
+    
     console.log('Data cache initialized successfully');
   } catch (error) {
     console.error('Error initializing cache:', error.message);
-    // Don't exit, just start with empty cache
     dataCache = { gigs: [], members: [], commitments: [] };
   }
 }
 
 // Configure CORS
 app.use(cors({
-  origin: process.env.FRONTEND_URL || '*',
+  origin: ['https://gig-calendar-app.vercel.app', 'http://localhost:5173'],
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
-  credentials: true
+  credentials: true,
+  allowedHeaders: ['Content-Type', 'Authorization']
 }));
 
 app.use(express.json());
+
+// Add a test endpoint
+app.get('/test', (req, res) => {
+  res.json({ message: 'API is working!' });
+});
 
 // Emit updates to all connected clients
 const emitUpdate = (type, data) => {
@@ -137,17 +151,21 @@ const emitUpdate = (type, data) => {
 // API endpoints
 app.post('/api/login', (req, res) => {
   const { email, password } = req.body;
+  console.log('Login attempt for:', email);
   const user = dataCache.members.find(m => m.email === email && m.password === password);
   
   if (user) {
+    console.log('Login successful for:', email);
     res.json({ success: true, user });
   } else {
+    console.log('Login failed for:', email);
     res.status(401).json({ success: false, message: 'Invalid credentials' });
   }
 });
 
 // Gigs endpoints
 app.get('/api/gigs', (_, res) => {
+  console.log('GET /api/gigs - Returning gigs:', dataCache.gigs.length);
   res.json({ gigs: dataCache.gigs });
 });
 
